@@ -10,24 +10,207 @@
                 Ext.define('CustomApp', {
     extend: "Rally.app.App", componentCls: "app", layout: { type: "vbox", align: "stretch" },
 
-    items: [{
-        xtype: "panel", layout: "anchor", border: !0, fieldDefaults: { labelWidth: 40 },
-        defaultType: "textfield", bodyPadding: 5,
-        items: [{
-            fieldLabel: "Query", itemId: "queryField", anchor: "100%", width: 700, height: 100,
-            xtype: "textarea", value: '{\n    "ObjectID": {$gt:0},\n    "__At": "current"\n}'
-        },
-        { fieldLabel: "Fields", itemId: "fieldsField", anchor: "100%", width: 700, value: "ObjectID, _ValidFrom, _UnformattedID, Name" },
-        { fieldLabel: "Sort", itemId: "sortField", anchor: "100%", width: 700, value: "{'ObjectID' : -1, '_ValidFrom': 1}" },
-        { fieldLabel: "Page Size", itemId: "pageSizeField", anchor: "100%", width: 700, value: "10" }],
-        buttons: [{ xtype: "rallybutton", text: "Search", itemId: "searchButton" }, { xtype: "rallybutton", text: "CSV", itemId: "csvButton" }]
-    },
-    { xtype: "panel", itemId: "gridHolder", layout: "fit", height: 400 }],
+    artefactTypes: [
+        {  ID: 1, Name: "User Story", value: 'HierarchicalRequirement'},
+        {  ID: 2, Name: 'Defect', value: 'Defect'},
+        {  ID: 3, Name: 'Task', value: 'Task'},
+        {  ID: 4, Name: 'Test Case', value: 'TestCase'},
+    ],
+    items: [
+        {
+            xtype: "panel", 
+            layout: "anchor", 
+            border: !0, 
+            fieldDefaults: { labelWidth: 40 },
+            defaultType: "textfield", 
+            bodyPadding: 5,
+            items: [
+                {
+                    xtype: 'container',
+                    layout: 'hbox',
+                    width: '100%',
+                    itemId: 'selectorBox'
+                },
+                {
+                    fieldLabel: "Query", 
+                    itemId: "queryField", 
+                    anchor: "100%", 
+                    width: 700, 
+                    height: 200,
+                    xtype: "textarea", 
+                    value: '{\n    "ObjectID": {$gt:0},\n    "__At": "current"\n}'
+                },
+                { 
+                    fieldLabel: "Fields", 
+                    itemId: "fieldsField", 
+                    anchor: "100%", 
+                    width: 700, 
+                    value: "ObjectID, _ValidFrom, FormattedID, Name" 
+                },
+                { 
+                    fieldLabel: "Sort", 
+                    itemId: "sortField", 
+                    anchor: "100%", 
+                    width: 700, 
+                    value: "{'ObjectID' : -1, '_ValidFrom': 1}" 
+                },
+                { 
+                    fieldLabel: "Page Size", 
+                    itemId: "pageSizeField", 
+                    anchor: "100%", 
+                    width: 700, 
+                    value: "10" 
+                }
+            ],
+            buttons: [
+                { 
+                    xtype: "rallybutton", 
+                    text: "Search", 
+                    itemId: "searchButton"
 
+                }, 
+                { 
+                    xtype: "rallybutton", 
+                    text: "CSV", 
+                    itemId: "csvButton" 
+                }
+            ]
+        },
+        { 
+            xtype: "panel", 
+            itemId: "gridHolder", 
+            layout: "fit", 
+            height: 400 
+        }
+    ],
+
+    _addItemSelector: function(piType) {
+        var me = this;
+        var selectorBox = this.down('#selectorBox');
+        selectorBox.add( Ext.create('Rally.ui.combobox.ArtifactSearchComboBox',{
+            fieldLabel: 'Top Level Item: ',
+            itemId: 'itemSelector',
+            margin: 10,
+            storeConfig: {
+                models: [ 'portfolioitem/' + piType.rawValue.toLowerCase()]
+            },
+            listeners: {
+                select: function(itemSelector) {
+                    me._updateQuerySetting( "_ItemHierarchy", itemSelector.getRecord().get('ObjectID'));
+                },
+                scope: me
+            }
+        }));
+
+    },
+
+    _addTypePicker: function() {
+        var me = this;
+        var store = Ext.create("Ext.data.Store", {
+
+            fields: ['ID', 'Name', 'value'], 
+            data: { records: this.artefactTypes },
+            proxy: {
+                type: "memory",
+                reader: { type: "json", root: "records" }
+            }
+        });
+
+        this.down('#selectorBox').add ( Ext.create('Rally.ui.picker.MultiObjectPicker', {
+            store: store,
+            margin: 10,
+            matchFieldName: 'Name',
+            selectionKey: 'ID',
+            recordKey: 'ID',
+            fieldLabel: 'Lower types',
+            listeners: {
+                collapse: function(items) {
+                    var types = [];
+                    _.each( items.getValue(), function (item) {
+                        types.push(item.get('value'));
+                    });
+                    me._updateQuerySetting("_TypeHierarchy", { "$in" : types});
+                }
+            }
+        }));
+    },
     launch: function () {
-        var button = this.down("#searchButton"); var button2 = this.down("#csvButton");
+        var selectorBox = this.down('#selectorBox');
+        var button = this.down("#searchButton"); 
+        var button2 = this.down("#csvButton");
+
+        var me = this;
+        selectorBox.add( Ext.create('Rally.ui.combobox.PortfolioItemTypeComboBox', {
+            margin: 10,
+//             storeConfig: {
+//                 load: function(store, records,) {
+//                     debugger;
+// //                    me.artefactTypes.push
+//                 }
+//             },
+            listeners: {
+                ready: function(piType) {
+                    _.each(piType.store.getRecords(), function(record) {
+                        me.artefactTypes.push( {
+                            ID: me.artefactTypes.length + 1,
+                            Name: record.get('Name'),
+                            value: record.get('TypePath')
+                        });
+                    });
+                    me._addTypePicker();
+                    if ( me.down('#itemSelector')) {
+                        me.down('#itemSelector').destroy();
+                    }
+                    me._addItemSelector(piType);
+                },
+                select: function(piType) {
+                    if ( me.down('#itemSelector')) {
+                        me.down('#itemSelector').destroy();
+                    }
+                    me._addItemSelector(piType);
+                }
+            },
+            scope: me
+        }));
         button.on("click", this.searchClicked, this);
         button2.on("click", this.csvClicked, this);
+    },
+
+    _updateQuerySetting: function(term, value) {
+        var currentQuery = Ext.JSON.decode(this.down('#queryField').value);
+        if (undefined !== value) {
+            currentQuery[term] = value;
+        } else {
+            delete currentQuery[term];
+        }
+        this.down('#queryField').setValue(this._prettyPrintJSON(Ext.JSON.encode(currentQuery)));
+        this.searchClicked();
+
+    },
+
+    _prettyPrintJSON: function (jstring) {
+        var retStr = "";
+        var indent = 0;
+        var i = 0;
+        _.each(jstring, function(c) {
+            if (c === '{') {
+                retStr += c + "\n";
+                indent += 4;
+                for ( i =0; i < indent; i++) {  retStr += " "; }
+            } else if ( c === '}') {
+                retStr += "\n";
+                indent -= 4;
+                for ( i =0; i < indent; i++) { retStr += " "; }
+                retStr += c;
+            } else if (c === ',') {
+                retStr += c + "\n";
+                for ( i =0; i < indent; i++) { retStr += " "; }
+            } else {
+                retStr += c;
+            }
+        });
+
+        return retStr;
     },
 
     searchClicked: function () {
