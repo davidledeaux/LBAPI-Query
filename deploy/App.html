@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>lbapiQuery</title>
+
+    <script type="text/javascript" src="/apps/2.1/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function () {
+                Ext.define("CustomApp",{extend:"Rally.app.App",componentCls:"app",layout:{type:"vbox",align:"stretch"},items:[{xtype:"panel",layout:"anchor",border:!0,fieldDefaults:{labelWidth:40},defaultType:"textfield",bodyPadding:5,items:[{fieldLabel:"Query",itemId:"queryField",anchor:"100%",width:700,height:100,xtype:"textarea",value:'{\n    "ObjectID": {$gt:0},\n    "__At": "current"\n}'},{fieldLabel:"Fields",itemId:"fieldsField",anchor:"100%",width:700,value:"ObjectID, _ValidFrom, _UnformattedID, Name"},{fieldLabel:"Sort",itemId:"sortField",anchor:"100%",width:700,value:"{'ObjectID' : -1, '_ValidFrom': 1}"},{fieldLabel:"Page Size",itemId:"pageSizeField",anchor:"100%",width:700,value:"10"}],buttons:[{xtype:"rallybutton",text:"Search",itemId:"searchButton"},{xtype:"rallybutton",text:"CSV",itemId:"csvButton"}]},{xtype:"panel",itemId:"gridHolder",layout:"fit",height:400}],launch:function(){var e=this.down("#searchButton"),t=this.down("#csvButton");e.on("click",this.searchClicked,this),t.on("click",this.csvClicked,this)},searchClicked:function(){var e=this.down("#queryField").getValue(),t=this.down("#fieldsField").getValue();t="true"===t||t.split(", "),console.log(t);var a=this.down("#sortField").getValue(),i=this.down("#pageSizeField").getValue(),o=parseInt(i,10);i=o||10;var r=Ext.bind(this.processSnapshots,this);this.doSearch(e,t,a,i,r)},exportGrid:function(e){if(Ext.isIE)this._ieToExcel(e);else{var t=this._getCSV(e);window.location="data:text/csv;charset=utf8,"+encodeURIComponent(t)}},_escapeForCSV:function(e){return e='"'+(e=e.replace(/"/g,""))+'"'},_getFieldText:function(e){return null===e||void 0===e?"":e._refObjectName&&!e.getMonth?e._refObjectName:e instanceof Date?Ext.Date.format(e,this.dateFormat):"number"==typeof e?""+e:e.match?e:""},_getFieldTextAndEscape:function(e){var t=this._getFieldText(e);return this._escapeForCSV(t)},_getCSV:function(e){var t=e.columns,a=e.store,i="",o=this;return Ext.each(t,function(e){!0!==e.hidden&&(i+=o._getFieldTextAndEscape(e.text)+",")}),i+="\r\n",a.each(function(e){var a=e.getData();Ext.each(t,function(e){if(!0!==e.hidden){var t=e.dataIndex,r=a[t];i+=o._getFieldTextAndEscape(r)+","}}),i+="\r\n"}),i},_ieGetGridData:function(e,t){var a=this,i=e.columns;Ext.each(i,function(e,a){!0!==e.hidden&&(console.log("header: ",e.text),t.cells(1,a+1).value=e.text)});var o=2;e.store.each(function(e){var r=e.getData();Ext.each(i,function(e,i){if(!0!==e.hidden){var s=e.dataIndex,n=r[s],l=a._getFieldText(n);t.cells(o,i+1).value=l}}),o++})},_ieToExcel:function(e){if(window.ActiveXObject){var t,a;try{a=(t=new ActiveXObject("Excel.Application")).Workbooks.Add()}catch(e){return void Ext.Msg.alert("Error",'For the export to work in IE, you have to enable a security setting called "Initialize and script ActiveX control not marked as safe" from Internet Options -> Security -> Custom level..."')}a.worksheets("Sheet1").activate();var i=a.activeSheet;t.visible=!0,this._ieGetGridData(e,i),i.columns.autofit()}},csvClicked:function(){var e=this.down("#queryField").getValue(),t=this.down("#fieldsField").getValue();t="true"===t||t.split(", ");var a=this.down("#sortField").getValue(),i=this.down("#pageSizeField").getValue(),o=parseInt(i,10);i=o||10;var r=Ext.bind(this.processSnapshotsCSV,this);this.doSearch(e,t,a,i,r),Ext.Msg.alert("Please be patient it will take sometime to download...")},createSortMap:function(e){var t=e.split(", "),a={};for(var i in t)if(t.hasOwnProperty(i))return a[i]=1,a},doSearch:function(e,t,a,i,o){var r="https://rally1.rallydev.com/analytics/v2.0/service/rally/workspace/"+this.context.getWorkspace().ObjectID+"/artifact/snapshot/query.js",s={find:e};t&&(s.fields=Ext.JSON.encode(t)),a&&(s.sort=a),i&&(s.pagesize=i),Ext.Ajax.cors=!0,console.log("About to do:",r,s),Ext.Ajax.request({url:r,method:"GET",params:s,withCredentials:!0,success:function(e){var t=e.responseText,a=Ext.JSON.decode(t);o(a.Results)},failure:function(e){var t={},a="";t=e.responseText?Ext.JSON.decode(e.responseText):{Errors:[e.statusText]},_.each(t.Errors,function(e){a+="<p>"+e+"</p>"}),Ext.create("Rally.ui.dialog.Dialog",{autoShow:!0,draggable:!0,closable:!0,width:600,title:"Error Msg:",items:{xtype:"component",html:a}})}})},processSnapshots:function(e){var t=this.getFieldsFromSnapshots(e),a=Ext.create("Ext.data.Store",{storeId:"snapshotStore",fields:t,data:{items:e},proxy:{type:"memory",reader:{type:"json",root:"items"}}}),i=this.createColumnsForFields(t),o=Ext.create("Ext.grid.Panel",{title:"Snapshots",store:a,columns:i,height:400}),r=this.down("#gridHolder");r.removeAll(!0),r.add(o)},processSnapshotsCSV:function(e){var t=this.getFieldsFromSnapshots(e),a=Ext.create("Ext.data.Store",{storeId:"snapshotStore",fields:t,data:{items:e},proxy:{type:"memory",reader:{type:"json",root:"items"}}}),i=this.createColumnsForFields(t),o=Ext.create("Ext.grid.Panel",{title:"Snapshots",store:a,columns:i,height:400}),r=this.down("#gridHolder");r.removeAll(!0),r.add(o),this.exportGrid(o)},getFieldsFromSnapshots:function(e){if(0===e.length)return[];var t=e[0],a=[];for(var i in t)t.hasOwnProperty(i)&&a.push(i);return a},createColumnsForFields:function(e){var t=[],a=0;for(a=0;e.length>a;++a){var i={header:e[a],dataIndex:e[a]};"Name"===e[a]&&(i.flex=1),t.push(i)}return t}});
+
+            Rally.launchApp('CustomApp', {
+                name:"lbapiQuery",
+                parentRepos:"",
+                version:"0.1.1"
+            });
+
+        });
+    </script>
+
+
+    <style type="text/css">
+        
+    </style>
+</head>
+<body>
+</body>
+</html>
